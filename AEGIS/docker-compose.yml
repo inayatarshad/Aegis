@@ -1,0 +1,38 @@
+version: "3.9"
+
+services:
+  api:
+    build: .
+    container_name: aegis_api
+    ports:
+      - "8000:8000"
+    environment:
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+    volumes:
+      - ./data:/app/data
+      - ./outputs:/app/outputs
+      - ./models/saved:/app/models/saved
+    command: >
+      sh -c "python data/simulated/generate_telemetry.py &&
+             uvicorn api.main:app --host 0.0.0.0 --port 8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  dashboard:
+    build: .
+    container_name: aegis_dashboard
+    ports:
+      - "8501:8501"
+    environment:
+      - GROQ_API_KEY=${GROQ_API_KEY}
+    depends_on:
+      - api
+    command: streamlit run dashboard/app.py --server.port 8501 --server.address 0.0.0.0
+    volumes:
+      - ./data:/app/data
+      - ./outputs:/app/outputs
