@@ -6,10 +6,13 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+BASE_DIR = Path(__file__).resolve().parent.parent
+WORKSPACE_DIR = BASE_DIR.parent
+
+load_dotenv(BASE_DIR / ".env")
+load_dotenv(WORKSPACE_DIR / ".env", override=True)
 
 # ── Paths ──────────────────────────────────────────────────────────────────
-BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
 VECTORSTORE_DIR = DATA_DIR / "vectorstore"
 DOCTRINE_DIR = DATA_DIR / "simulated" / "doctrine_docs"

@@ -25,14 +25,13 @@ logger = get_logger(__name__)
 
 def route_after_classification(state: AEGISState) -> str:
     """
-    After classification: always run XAI, retrieval, and context in parallel.
-    LangGraph handles fan-out; we always proceed.
+    After classification: proceed to XAI if classification succeeded.
     """
     clf = state.get("classification")
     if clf is None:
-        logger.warning("Classification result missing — routing to END with error")
+        logger.warning("Classification result missing - routing to END with error")
         return "end_with_error"
-    return "parallel_analysis"
+    return "run_xai"
 
 
 def route_after_fusion(state: AEGISState) -> str:
@@ -61,47 +60,42 @@ def build_pipeline() -> StateGraph:
     graph = StateGraph(AEGISState)
 
     # Register nodes
-    graph.add_node("ingestion", ingestion_agent)
-    graph.add_node("classification", classification_agent)
-    graph.add_node("xai", xai_agent)
-    graph.add_node("retrieval", retrieval_agent)
-    graph.add_node("context", context_agent)
-    graph.add_node("fusion", fusion_agent)
-    graph.add_node("report", report_agent)
-    graph.add_node("escalation", escalation_agent)
+    graph.add_node("ingestion_step", ingestion_agent)
+    graph.add_node("classification_step", classification_agent)
+    graph.add_node("xai_step", xai_agent)
+    graph.add_node("retrieval_step", retrieval_agent)
+    graph.add_node("context_step", context_agent)
+    graph.add_node("fusion_step", fusion_agent)
+    graph.add_node("report_step", report_agent)
+    graph.add_node("escalation_step", escalation_agent)
 
     # Entry point
-    graph.set_entry_point("ingestion")
+    graph.set_entry_point("ingestion_step")
 
     # Linear flow: ingestion → classification
-    graph.add_edge("ingestion", "classification")
+    graph.add_edge("ingestion_step", "classification_step")
 
-    # Fan-out: classification → [xai, retrieval, context] (parallel)
+    # Sequential analysis: classification -> xai -> retrieval -> context
     graph.add_conditional_edges(
-        "classification",
+        "classification_step",
         route_after_classification,
         {
-            "parallel_analysis": "xai",
+            "run_xai": "xai_step",
             "end_with_error": END,
         }
     )
-    # Also fan out to retrieval and context from classification
-    graph.add_edge("classification", "retrieval")
-    graph.add_edge("classification", "context")
-
-    # Fan-in: all three → fusion
-    graph.add_edge("xai", "fusion")
-    graph.add_edge("retrieval", "fusion")
-    graph.add_edge("context", "fusion")
+    graph.add_edge("xai_step", "retrieval_step")
+    graph.add_edge("retrieval_step", "context_step")
+    graph.add_edge("context_step", "fusion_step")
 
     # fusion → report → escalation → END
     graph.add_conditional_edges(
-        "fusion",
+        "fusion_step",
         route_after_fusion,
-        {"generate_report": "report"}
+        {"generate_report": "report_step"}
     )
-    graph.add_edge("report", "escalation")
-    graph.add_edge("escalation", END)
+    graph.add_edge("report_step", "escalation_step")
+    graph.add_edge("escalation_step", END)
 
     return graph.compile()
 

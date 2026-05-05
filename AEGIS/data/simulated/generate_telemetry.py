@@ -255,6 +255,6 @@ if __name__ == "__main__":
         label_counts[lbl] = label_counts.get(lbl, 0) + 1
     print(f"  Label distribution: {label_counts}")
 
-    print("\n✅ Setup complete. You can now run the application.")
+    print("\nSetup complete. You can now run the application.")
     print("   uvicorn api.main:app --reload")
     print("   streamlit run dashboard/app.py")
