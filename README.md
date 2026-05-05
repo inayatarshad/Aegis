@@ -264,7 +264,8 @@ pytest tests/ -v --cov=. --cov-report=html
 | Report generation ROUGE-L | 0.76 vs. template baseline |
 | Hallucination rate | <3% (self-correction loop) |
 
----
+## Demo Video🧑‍💻
+https://www.loom.com/share/cd610fa9c018451d96712896af325ad8
 
 ## 🔮 Research Contributions
 
