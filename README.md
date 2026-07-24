@@ -2,12 +2,34 @@
 
 **An uncertainty-aware agent workflow for simulated UAV telemetry analysis.**
 
+[![Live Demo](https://img.shields.io/badge/live-demo-55f2b0)](https://aegis-agentic-isr.vercel.app)
+[![API Docs](https://img.shields.io/badge/API-OpenAPI-009688)](https://aegis-agentic-isr.vercel.app/api/docs)
+[![CI](https://github.com/inayatarshad/Aegis/actions/workflows/ci.yml/badge.svg)](https://github.com/inayatarshad/Aegis/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 AEGIS is a portfolio and research prototype that explores how a graph-based AI
 system can combine classification, local explanations, policy retrieval,
 geographic context, evidence fusion, report generation, and human review.
 
 It operates exclusively on synthetic data. It is not a weapon system, an
 operational ISR product, or a validated safety system.
+
+## Live deployment
+
+- **Operator demo:** https://aegis-agentic-isr.vercel.app
+- **Interactive API documentation:** https://aegis-agentic-isr.vercel.app/api/docs
+- **Readiness endpoint:** https://aegis-agentic-isr.vercel.app/api/health
+- **Source:** https://github.com/inayatarshad/Aegis
+
+The production deployment runs as a Python 3.12 Vercel Function with CPU-only
+PyTorch. The operator demo executes the real LangGraph pipeline through
+`POST /api/analyze`; it is not a prerecorded response.
+
+The classifier and ephemeral doctrine collection initialize on demand. A new
+serverless instance can therefore take several seconds on its first analysis.
+Before that initialization, `/api/health` may correctly report `cold_start` or
+`not_seeded`. The external Groq integration is optional; without a configured
+key, production returns a clearly labelled deterministic evidence-only report.
 
 ## Why this project exists
 
@@ -60,7 +82,7 @@ from claiming that an alert was dispatched.
 
 ## Quick start
 
-Python 3.11 is recommended.
+Python 3.12 is recommended and matches the production runtime.
 
 ```bash
 cd AEGIS
@@ -132,8 +154,18 @@ Actions runs generation, linting, and tests on every push and pull request.
 
 ## API example
 
+Local development:
+
 ```bash
 curl -X POST http://localhost:8000/analyze \
+  -H "Content-Type: application/json" \
+  --data @data/simulated/example_request.json
+```
+
+Production:
+
+```bash
+curl -X POST https://aegis-agentic-isr.vercel.app/api/analyze \
   -H "Content-Type: application/json" \
   --data @data/simulated/example_request.json
 ```
@@ -147,13 +179,16 @@ node timings, pipeline version, and any degraded-component errors.
 ```text
 AEGIS/
 ├── agents/              # workflow nodes
-├── api/                 # FastAPI schemas and routes
+├── api/                 # schemas and Vercel ASGI gateway
 ├── core/                # state, configuration, LangGraph orchestration
 ├── dashboard/           # Streamlit operator UI
 ├── data/simulated/      # generator and synthetic scenarios
 ├── evaluation/          # reproducible benchmark
 ├── models/              # training and model loading
+├── service/             # framework-independent FastAPI application
 ├── tests/               # unit, integration, and API tests
+├── pyproject.toml       # Python 3.12 production dependency contract
+├── vercel.json          # serverless routing and function configuration
 ├── Dockerfile
 └── docker-compose.yml
 ```
@@ -170,6 +205,8 @@ AEGIS/
   approval storage are future work.
 - Authentication, rate limiting, persistent audit storage, and production
   deployment hardening are not implemented.
+- The Vercel doctrine store is ephemeral and can be recreated on a new
+  serverless instance.
 
 ## Roadmap
 
