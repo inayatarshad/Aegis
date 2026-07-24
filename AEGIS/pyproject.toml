@@ -1,0 +1,31 @@
+[project]
+name = "aegis-agent-runtime"
+version = "2.0.0"
+requires-python = "==3.12.*"
+dependencies = [
+  "langgraph==0.2.28",
+  "groq==0.11.0",
+  "sentence-transformers==3.2.1",
+  "torch==2.2.2",
+  "transformers==4.44.2",
+  "scikit-learn==1.5.2",
+  "numpy==1.26.4",
+  "chromadb==0.5.18",
+  "fastapi==0.115.4",
+  "uvicorn[standard]==0.32.1",
+  "pydantic==2.9.2",
+  "python-dotenv==1.0.1",
+  "httpx<0.28",
+]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.vercel.scripts]
+build = "python build_vercel.py"
+
