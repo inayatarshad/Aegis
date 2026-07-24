@@ -14,5 +14,17 @@ from fastapi import FastAPI  # noqa: E402
 from api.main import app as core_app  # noqa: E402
 
 app = FastAPI(title="AEGIS Vercel Gateway")
-app.mount("/api", core_app)
 
+
+@app.get("/")
+def gateway_status():
+    return {
+        "service": "AEGIS Agent Runtime",
+        "status": "online",
+        "health": "/api/health",
+        "docs": "/api/docs",
+        "repository": "https://github.com/inayatarshad/Aegis",
+    }
+
+
+app.mount("/api", core_app)
