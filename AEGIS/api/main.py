@@ -2,15 +2,14 @@
 api/main.py — FastAPI REST backend for AEGIS
 """
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 import json
-from pathlib import Path
 
 from api.schemas import TelemetryInput, PipelineResponse, HealthResponse
 from core.pipeline import run_pipeline
 from utils.logger import get_logger
+from core.config import VECTORSTORE_DIR, GROQ_API_KEY, BASE_DIR
 
 logger = get_logger(__name__)
 
@@ -36,8 +35,20 @@ app.add_middleware(
 
 @app.get("/health", response_model=HealthResponse, tags=["System"])
 def health():
-    """System health check."""
-    return HealthResponse(status="operational", version="1.0.0")
+    """Report readiness instead of returning an unconditional green status."""
+    model_ready = (BASE_DIR / "models" / "saved" / "threat_clf_v2.pkl").exists()
+    vectorstore_ready = VECTORSTORE_DIR.exists() and any(VECTORSTORE_DIR.iterdir())
+    components = {
+        "classifier": "ready" if model_ready else "cold_start",
+        "vectorstore": "ready" if vectorstore_ready else "not_seeded",
+        "llm": "configured" if GROQ_API_KEY else "offline_fallback",
+    }
+    degraded = any(value in {"not_seeded"} for value in components.values())
+    return HealthResponse(
+        status="degraded" if degraded else "operational",
+        version="2.0.0",
+        components=components,
+    )
 
 
 @app.post("/analyze", response_model=PipelineResponse, tags=["ISR Analysis"])
@@ -48,11 +59,13 @@ def analyze_telemetry(payload: TelemetryInput):
     """
     logger.info(f"[API] /analyze — scenario: {payload.scenario_id}")
     try:
-        result = run_pipeline(payload.dict())
+        result = run_pipeline(payload.model_dump())
         final = result.get("final_response", {})
         if not final:
             raise HTTPException(status_code=500, detail="Pipeline produced no output")
-        return JSONResponse(content=final)
+        return final
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"[API] Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -66,7 +79,7 @@ def analyze_batch(payloads: list[TelemetryInput]):
     results = []
     for payload in payloads:
         try:
-            result = run_pipeline(payload.dict())
+            result = run_pipeline(payload.model_dump())
             results.append(result.get("final_response", {}))
         except Exception as e:
             results.append({"error": str(e), "scenario_id": payload.scenario_id})
@@ -76,7 +89,7 @@ def analyze_batch(payloads: list[TelemetryInput]):
 @app.get("/scenarios/sample", tags=["Demo"])
 def get_sample_scenarios():
     """Return pre-generated sample scenarios for demo/testing."""
-    scenarios_path = Path("data/simulated/sample_scenarios.json")
+    scenarios_path = BASE_DIR / "data" / "simulated" / "sample_scenarios.json"
     if not scenarios_path.exists():
         raise HTTPException(
             status_code=404,
@@ -89,7 +102,7 @@ def get_sample_scenarios():
 @app.get("/scenarios/sample/{scenario_id}", tags=["Demo"])
 def run_sample_scenario(scenario_id: str):
     """Run the AEGIS pipeline on a pre-generated sample scenario."""
-    scenarios_path = Path("data/simulated/sample_scenarios.json")
+    scenarios_path = BASE_DIR / "data" / "simulated" / "sample_scenarios.json"
     if not scenarios_path.exists():
         raise HTTPException(status_code=404, detail="Sample scenarios not found")
 

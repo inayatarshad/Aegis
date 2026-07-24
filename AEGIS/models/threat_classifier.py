@@ -6,9 +6,8 @@ In production: swap generate_synthetic_data() for real labeled ISR data.
 
 import numpy as np
 import pickle
-from pathlib import Path
 from sklearn.ensemble import GradientBoostingClassifier
-from sklearn.linear_model import LogisticRegression
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
 from sentence_transformers import SentenceTransformer
@@ -18,7 +17,7 @@ from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-MODEL_PATH = BASE_DIR / "models" / "saved" / "threat_clf.pkl"
+MODEL_PATH = BASE_DIR / "models" / "saved" / "threat_clf_v2.pkl"
 MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 _cached_classifier = None
@@ -123,11 +122,15 @@ def train_classifier():
     # Train pipeline
     clf_pipeline = Pipeline([
         ("scaler", StandardScaler()),
-        ("clf", GradientBoostingClassifier(
-            n_estimators=150,
-            max_depth=4,
-            learning_rate=0.1,
-            random_state=42,
+        ("clf", CalibratedClassifierCV(
+            estimator=GradientBoostingClassifier(
+                n_estimators=120,
+                max_depth=3,
+                learning_rate=0.07,
+                random_state=42,
+            ),
+            method="sigmoid",
+            cv=5,
         ))
     ])
     clf_pipeline.fit(X_fused, y)

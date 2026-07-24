@@ -98,6 +98,14 @@ def report_agent(state: AEGISState) -> AEGISState:
         state["errors"].append("Report: missing classification or telemetry")
         return state
 
+    if not GROQ_API_KEY or GROQ_API_KEY.startswith("your_"):
+        state["salute_report"] = _fallback_salute(tel, clf, ctx)
+        state["report_text"] = _format_fallback_report(
+            state["salute_report"], clf, xai, fusion
+        )
+        logger.info("[Report] Generated deterministic offline report")
+        return state
+
     # Build prompt
     prompt = REPORT_PROMPT_TEMPLATE.format(
         threat_level=clf.threat_level.value,
@@ -163,11 +171,12 @@ def report_agent(state: AEGISState) -> AEGISState:
         logger.info(f"[Report] SALUTE report generated for {tel.scenario_id}")
 
     except Exception as e:
-        state["errors"].append(f"Report generation error: {e}")
-        logger.error(f"[Report] Error: {e}")
-        # Fallback: generate template-based report
+        state["errors"].append("LLM report unavailable; deterministic report used")
+        logger.error("[Report] Provider call failed: %s", type(e).__name__)
         state["salute_report"] = _fallback_salute(tel, clf, ctx)
-        state["report_text"] = f"[FALLBACK REPORT — LLM unavailable]\n{state['salute_report']}"
+        state["report_text"] = _format_fallback_report(
+            state["salute_report"], clf, xai, fusion
+        )
 
     return state
 
@@ -198,7 +207,7 @@ def _format_report(salute: SALUTEReport, report_dict: dict, clf, xai, fusion) ->
         report_dict.get("recommended_action", "Consult duty officer."),
         "═" * 60,
     ]
-    return "\n".join(l for l in lines if l is not None)
+    return "\n".join(line for line in lines if line is not None)
 
 
 def _fallback_salute(tel, clf, ctx) -> SALUTEReport:
@@ -209,4 +218,20 @@ def _fallback_salute(tel, clf, ctx) -> SALUTEReport:
         unit="Unknown — no IFF signal" if not tel.iff_signal else "Unknown",
         time=tel.timestamp,
         equipment=f"Small UAV, wingspan ~{tel.estimated_wingspan_m}m",
+    )
+
+
+def _format_fallback_report(salute, clf, xai, fusion) -> str:
+    """Generate a transparent evidence-only report without an external LLM."""
+    recommended_action = (
+        "Hold automated action and request operator review."
+        if fusion and fusion.human_review_required
+        else "Continue monitoring under the applicable operating procedure."
+    )
+    return "[DETERMINISTIC EVIDENCE-ONLY REPORT]\n" + _format_report(
+        salute,
+        {"recommended_action": recommended_action},
+        clf,
+        xai,
+        fusion,
     )

@@ -1,0 +1,16 @@
+{
+  "scenario_id": "DEMO-001",
+  "timestamp": "2026-01-01T12:00:00Z",
+  "latitude": 33.6844,
+  "longitude": 73.0479,
+  "altitude_m": 65.0,
+  "speed_kmh": 72.0,
+  "heading_deg": 270.0,
+  "flight_pattern_entropy": 0.61,
+  "proximity_to_restricted_km": 1.8,
+  "iff_signal": false,
+  "estimated_wingspan_m": 1.1,
+  "loiter_detected": true,
+  "rapid_altitude_change": false,
+  "mission_narrative": "Unidentified contact circling near the protected boundary."
+}

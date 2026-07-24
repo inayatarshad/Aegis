@@ -6,9 +6,9 @@ Real-time ISR analysis interface with threat map, SALUTE viewer, and XAI panel.
 import streamlit as st
 import json
 import requests
-import pandas as pd
 from pathlib import Path
 import sys
+import os
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -20,7 +20,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-API_BASE = "http://localhost:8000"
+API_BASE = os.getenv("AEGIS_API_BASE", "http://localhost:8000")
 
 # ── Custom CSS ────────────────────────────────────────────────────────────
 st.markdown("""
@@ -58,10 +58,13 @@ with st.sidebar:
     try:
         r = requests.get(f"{API_BASE}/health", timeout=2)
         if r.status_code == 200:
-            st.success("API: Online")
+            health = r.json()
+            st.success(f"API: {health.get('status', 'online').title()}")
+            for component, status in health.get("components", {}).items():
+                st.caption(f"{component}: {status}")
         else:
             st.error("API: Error")
-    except:
+    except requests.RequestException:
         st.warning("API: Offline (running in demo mode)")
 
     st.markdown("---")
@@ -80,7 +83,7 @@ def get_sample_scenarios():
         r = requests.get(f"{API_BASE}/scenarios/sample", timeout=5)
         if r.status_code == 200:
             return r.json()
-    except:
+    except requests.RequestException:
         pass
     # Fallback: load from file
     p = Path("data/simulated/sample_scenarios.json")
@@ -183,7 +186,7 @@ if result:
 
     threat_color = {"HOSTILE": "threat-hostile", "SUSPICIOUS": "threat-suspicious",
                     "BENIGN": "threat-benign"}.get(threat, "")
-    col1.markdown(f"**THREAT LEVEL**")
+    col1.markdown("**THREAT LEVEL**")
     col1.markdown(f'<p class="{threat_color}">{threat}</p>', unsafe_allow_html=True)
 
     col2.metric("Confidence", f"{conf:.1%}")
@@ -195,7 +198,7 @@ if result:
 
     # ── Tabs ──────────────────────────────────────────────────────────────
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "📋 SALUTE Report", "🧠 XAI Explanation", "📡 Doctrine",
+        "📋 SALUTE Report", "🧠 Model Explanation", "📡 Doctrine",
         "⚠️ Escalation", "🔍 Agent Trace"
     ])
 
@@ -211,15 +214,20 @@ if result:
         st.code(result.get("report_text", ""), language=None)
 
     with tab2:
-        st.markdown("#### XAI Summary")
+        st.markdown("#### Faithful local explanation")
+        st.caption(
+            f"Method: {result.get('attribution_method', 'unavailable')}. "
+            "Values show the change in predicted-class probability when one "
+            "input is replaced by a neutral reference."
+        )
         st.info(result.get("xai_summary", "N/A"))
         st.markdown("#### Top Contributing Factors")
         for i, factor in enumerate(result.get("top_xai_factors", []), 1):
             st.markdown(f"{i}. {factor}")
         if result.get("shap_plot_path") and Path(result["shap_plot_path"]).exists():
-            st.image(result["shap_plot_path"], caption="SHAP Feature Attribution")
+            st.image(result["shap_plot_path"], caption="Local probability attribution")
         else:
-            st.caption("SHAP plot saved to outputs/shap/ directory")
+            st.caption("Attribution plot unavailable")
 
     with tab3:
         st.markdown("#### Retrieved Doctrine Reference")
@@ -227,6 +235,13 @@ if result:
 
     with tab4:
         st.markdown("#### Escalation Decision")
+        review_status = result.get("review_status", "NOT_REQUIRED")
+        if review_status == "PENDING":
+            st.warning(
+                "Human decision pending. The escalation shown below is a "
+                "recommendation, not an automatically dispatched action."
+            )
+            st.caption(result.get("review_reason", ""))
         esc_reason = result.get("escalation_reason", "")
         if esc_level >= 3:
             st.error(f"🚨 Level {esc_level}: {esc_reason}")
@@ -250,6 +265,19 @@ if result:
         trace = result.get("agent_trace", [])
         trace_html = " → ".join([f"<span>{a}</span>" for a in trace])
         st.markdown(f'<div class="agent-trace">{trace_html}</div>', unsafe_allow_html=True)
+
+        metrics = result.get("node_metrics", {})
+        if metrics:
+            st.markdown("#### Node observability")
+            metric_rows = [
+                {
+                    "agent": agent,
+                    "duration_ms": values.get("duration_ms"),
+                    "status": values.get("status"),
+                }
+                for agent, values in metrics.items()
+            ]
+            st.dataframe(metric_rows, use_container_width=True, hide_index=True)
 
         if result.get("errors"):
             st.markdown("**Pipeline Errors:**")

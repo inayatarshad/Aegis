@@ -10,9 +10,8 @@ logger = get_logger(__name__)
 
 # Weights for fused risk score
 WEIGHTS = {
-    "classification_confidence": 0.40,
+    "classification_confidence": 0.50,
     "geo_risk_score": 0.30,
-    "retrieval_confidence": 0.10,
     "loiter_bonus": 0.10,
     "no_iff_bonus": 0.10,
 }
@@ -68,6 +67,12 @@ def fusion_agent(state: AEGISState) -> AEGISState:
                 "Loitering + no IFF detected — minimum SUSPICIOUS expected"
             )
 
+    if ret and ret.retrieval_confidence < 0.35:
+        conflict_flags.append(
+            "Retrieved doctrine has low semantic relevance; evidence is incomplete"
+        )
+        human_review_required = True
+
     # ── Fused risk score ──────────────────────────────────────────────────
     clf_conf = clf.confidence if clf else 0.0
     # For BENIGN, invert confidence (high benign confidence = low risk)
@@ -77,14 +82,12 @@ def fusion_agent(state: AEGISState) -> AEGISState:
         clf_risk = clf_conf
 
     geo_risk = ctx.geo_risk_score if ctx else 0.0
-    ret_conf = ret.retrieval_confidence if ret else 0.0
     loiter = float(tel.loiter_detected) if tel else 0.0
     no_iff = float(not tel.iff_signal) if tel else 0.0
 
     fused_score = (
         WEIGHTS["classification_confidence"] * clf_risk +
         WEIGHTS["geo_risk_score"] * geo_risk +
-        WEIGHTS["retrieval_confidence"] * ret_conf * 0.3 +   # partial weight
         WEIGHTS["loiter_bonus"] * loiter +
         WEIGHTS["no_iff_bonus"] * no_iff
     )

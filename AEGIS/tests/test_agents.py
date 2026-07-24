@@ -2,12 +2,11 @@
 tests/test_agents.py — Unit tests for AEGIS agents
 """
 
-import pytest
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from core.state import initial_state, ThreatLevel, EscalationLevel
+from core.state import initial_state, ThreatLevel
 from agents.ingestion_agent import ingestion_agent
 from agents.classification_agent import classification_agent
 from agents.context_agent import context_agent
@@ -55,8 +54,8 @@ class TestIngestionAgent:
         result = ingestion_agent(state)
         assert result["telemetry"] is not None
         assert result["telemetry"].scenario_id == "TEST-HOSTILE-001"
-        assert result["telemetry"].iff_signal == False
-        assert result["telemetry"].loiter_detected == True
+        assert not result["telemetry"].iff_signal
+        assert result["telemetry"].loiter_detected
 
     def test_missing_fields_logged_as_errors(self):
         state = initial_state({"scenario_id": "INCOMPLETE"})
@@ -105,14 +104,14 @@ class TestContextAgent:
         ctx = state["context"]
         assert ctx is not None
         # SAMPLE_HOSTILE is at Zone Alpha coords
-        assert ctx.in_restricted_zone == True
+        assert ctx.in_restricted_zone
 
     def test_far_from_zones_not_restricted(self):
         far_input = {**SAMPLE_BENIGN, "latitude": 35.0, "longitude": 75.0}
         state = initial_state(far_input)
         state = ingestion_agent(state)
         state = context_agent(state)
-        assert state["context"].in_restricted_zone == False
+        assert not state["context"].in_restricted_zone
 
     def test_geo_risk_score_range(self):
         state = initial_state(SAMPLE_HOSTILE)

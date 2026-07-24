@@ -10,8 +10,7 @@ from sentence_transformers import SentenceTransformer
 from core.state import AEGISState, RetrievalResult, ThreatLevel
 from core.config import (
     VECTORSTORE_DIR, CHROMA_COLLECTION,
-    RETRIEVAL_TOP_K, RETRIEVAL_MIN_SCORE, EMBEDDING_MODEL,
-    MAX_RETRIEVAL_RETRIES
+    RETRIEVAL_TOP_K, RETRIEVAL_MIN_SCORE, EMBEDDING_MODEL
 )
 from utils.logger import get_logger
 
@@ -94,21 +93,28 @@ def retrieval_agent(state: AEGISState) -> AEGISState:
         distances = results.get("distances", [[]])[0]
         metadatas = results.get("metadatas", [[]])[0]
 
-        # distances in ChromaDB are L2 — convert to similarity score
-        scores = [max(0.0, 1.0 - d) for d in distances]
+        # For unit-normalized embeddings, cosine similarity = 1 - squared_L2 / 2.
+        scores = [max(-1.0, min(1.0, 1.0 - (d / 2.0))) for d in distances]
         avg_score = sum(scores) / len(scores) if scores else 0.0
 
-        # Self-correction: re-query if low confidence
-        if avg_score < RETRIEVAL_MIN_SCORE and not requeried:
+        # Evidence-quality retry: retain the better result instead of blindly
+        # replacing the first retrieval.
+        if avg_score < RETRIEVAL_MIN_SCORE:
             logger.info(f"[Retrieval] Low confidence ({avg_score:.2f}), re-querying...")
             fallback_query = _build_fallback_query(classification.threat_level)
-            results = do_query(fallback_query)
-            docs = results.get("documents", [[]])[0]
-            distances = results.get("distances", [[]])[0]
-            metadatas = results.get("metadatas", [[]])[0]
-            scores = [max(0.0, 1.0 - d) for d in distances]
-            avg_score = sum(scores) / len(scores) if scores else 0.0
-            query = fallback_query
+            retry_results = do_query(fallback_query)
+            retry_docs = retry_results.get("documents", [[]])[0]
+            retry_distances = retry_results.get("distances", [[]])[0]
+            retry_metadatas = retry_results.get("metadatas", [[]])[0]
+            retry_scores = [
+                max(-1.0, min(1.0, 1.0 - (distance / 2.0)))
+                for distance in retry_distances
+            ]
+            retry_avg = sum(retry_scores) / len(retry_scores) if retry_scores else 0.0
+            if retry_avg > avg_score:
+                docs, metadatas, scores = retry_docs, retry_metadatas, retry_scores
+                avg_score = retry_avg
+                query = fallback_query
             requeried = True
 
         retrieved_docs = []

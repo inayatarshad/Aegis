@@ -37,6 +37,7 @@ EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 CHROMA_COLLECTION = "aegis_doctrine"
 RETRIEVAL_TOP_K = 3
 RETRIEVAL_MIN_SCORE = 0.45              # below this → re-query
+MIN_CLASSIFICATION_CONFIDENCE = 0.60
 
 # ── Classification Thresholds ─────────────────────────────────────────────
 HOSTILE_THRESHOLD = 0.75

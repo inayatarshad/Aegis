@@ -1,11 +1,7 @@
-"""
-agents/xai_agent.py — Explainable AI agent using SHAP.
-Generates per-feature attributions and natural language explanations.
-"""
+"""Faithful local explanations for the fused telemetry + text classifier."""
 
-import shap
+
 import numpy as np
-from pathlib import Path
 
 from core.state import AEGISState, XAIResult
 from core.config import SHAP_OUTPUT_DIR
@@ -16,130 +12,138 @@ from utils.logger import get_logger
 logger = get_logger(__name__)
 
 FEATURE_NAMES = [
-    "altitude_m",
-    "speed_kmh",
-    "heading_deg",
-    "flight_pattern_entropy",
-    "proximity_to_restricted_km",
-    "iff_signal",
-    "estimated_wingspan_m",
-    "loiter_detected",
-    "rapid_altitude_change",
+    "altitude_m", "speed_kmh", "heading_deg", "flight_pattern_entropy",
+    "proximity_to_restricted_km", "iff_signal", "estimated_wingspan_m",
+    "loiter_detected", "rapid_altitude_change",
 ]
 
 FEATURE_LABELS = {
-    "altitude_m": "altitude anomaly",
-    "speed_kmh": "abnormal speed",
-    "heading_deg": "heading irregularity",
-    "flight_pattern_entropy": "erratic flight pattern",
-    "proximity_to_restricted_km": "proximity to restricted zone",
-    "iff_signal": "no IFF transponder",
-    "estimated_wingspan_m": "unusual wingspan",
-    "loiter_detected": "loitering behavior",
+    "altitude_m": "altitude",
+    "speed_kmh": "speed",
+    "heading_deg": "heading",
+    "flight_pattern_entropy": "flight-pattern entropy",
+    "proximity_to_restricted_km": "restricted-zone proximity",
+    "iff_signal": "IFF status",
+    "estimated_wingspan_m": "estimated wingspan",
+    "loiter_detected": "loiter detection",
     "rapid_altitude_change": "rapid altitude change",
+    "mission_narrative": "mission narrative",
 }
 
+# Values represent an ordinary, identified aircraft away from a restricted zone.
+REFERENCE_TELEMETRY = np.array(
+    [175.0, 40.0, 180.0, 0.20, 12.0, 1.0, 0.70, 0.0, 0.0],
+    dtype=np.float32,
+)
+REFERENCE_NARRATIVE = "Registered aircraft operating normally in an approved corridor."
+METHOD = "leave-one-feature-out probability attribution"
 
-def generate_nl_explanation(shap_values: dict, threat_level: str) -> str:
-    """Convert SHAP values to a readable natural language explanation."""
-    # Sort by absolute SHAP value (descending)
-    sorted_factors = sorted(shap_values.items(), key=lambda x: abs(x[1]), reverse=True)
-    top_factors = sorted_factors[:3]
 
-    total_abs = sum(abs(v) for _, v in sorted_factors) or 1.0
-    factor_strs = []
-    for feat, val in top_factors:
-        pct = round(abs(val) / total_abs * 100)
-        label = FEATURE_LABELS.get(feat, feat)
-        direction = "elevated" if val > 0 else "reduced"
-        factor_strs.append(f"{label} ({pct}%)")
+def _target_probability(classifier, fused: np.ndarray, target_class: str) -> float:
+    class_index = list(classifier.classes_).index(target_class)
+    return float(classifier.predict_proba(fused.reshape(1, -1))[0][class_index])
 
-    factors_text = ", ".join(factor_strs)
-    explanation = (
-        f"Threat classified as {threat_level}. "
-        f"Primary contributing factors: {factors_text}."
+
+def _explain(classifier, embedder, telemetry, target_class: str) -> dict[str, float]:
+    """Measure probability change when each input is replaced by a reference value."""
+    tabular = telemetry_to_features(telemetry)
+    text = embedder.encode(
+        [telemetry.mission_narrative], normalize_embeddings=True
+    )[0]
+    fused = np.concatenate([tabular, text])
+    observed_probability = _target_probability(classifier, fused, target_class)
+
+    attributions: dict[str, float] = {}
+    for index, feature_name in enumerate(FEATURE_NAMES):
+        perturbed = tabular.copy()
+        perturbed[index] = REFERENCE_TELEMETRY[index]
+        perturbed_fused = np.concatenate([perturbed, text])
+        attributions[feature_name] = round(
+            observed_probability
+            - _target_probability(classifier, perturbed_fused, target_class),
+            6,
+        )
+
+    reference_text = embedder.encode(
+        [REFERENCE_NARRATIVE], normalize_embeddings=True
+    )[0]
+    text_perturbed = np.concatenate([tabular, reference_text])
+    attributions["mission_narrative"] = round(
+        observed_probability
+        - _target_probability(classifier, text_perturbed, target_class),
+        6,
     )
-    return explanation
+    return attributions
+
+
+def generate_nl_explanation(attributions: dict[str, float], threat_level: str) -> str:
+    ranked = sorted(attributions.items(), key=lambda item: abs(item[1]), reverse=True)
+    top = ranked[:3]
+    total = sum(abs(value) for _, value in ranked) or 1.0
+    factors = []
+    for feature, value in top:
+        direction = "supported" if value >= 0 else "opposed"
+        share = abs(value) / total
+        factors.append(
+            f"{FEATURE_LABELS[feature]} ({direction} the result; "
+            f"{abs(value):.1%} probability change, {share:.0%} of local impact)"
+        )
+    return (
+        f"Local perturbation analysis for the {threat_level} prediction. "
+        f"Strongest factors: {', '.join(factors)}."
+    )
 
 
 def xai_agent(state: AEGISState) -> AEGISState:
-    """
-    XAI Agent:
-    - Computes SHAP values for the tabular features of the current classification
-    - Generates natural language explanation
-    - Saves SHAP waterfall plot to disk
-    """
     state["agent_trace"].append("xai_agent")
     telemetry = state.get("telemetry")
     classification = state.get("classification")
-
     if telemetry is None or classification is None:
-        state["errors"].append("XAI: missing telemetry or classification")
+        state["errors"].append("Explanation: missing telemetry or classification")
         return state
 
     try:
         classifier, embedder = get_or_train_classifier()
-        tab_clf = classifier.named_steps.get("clf") if hasattr(classifier, "named_steps") else classifier
+        target_class = classification.threat_level.value
+        values = _explain(classifier, embedder, telemetry, target_class)
+        ranked = sorted(values, key=lambda name: abs(values[name]), reverse=True)
+        top_factors = [FEATURE_LABELS[name] for name in ranked[:3]]
+        explanation = generate_nl_explanation(values, target_class)
 
-        tab_features = telemetry_to_features(telemetry).reshape(1, -1)
-
-        # Use TreeExplainer for GBM; fall back to KernelExplainer
-        try:
-            explainer = shap.TreeExplainer(tab_clf)
-            shap_vals = explainer.shap_values(tab_features)
-            # shap_vals shape: (n_classes, n_samples, n_features) for multiclass
-            # Use the class index of the predicted threat
-            class_idx = list(tab_clf.classes_).index(classification.threat_level.value) \
-                if hasattr(tab_clf, "classes_") else 0
-            sv = shap_vals[class_idx][0] if isinstance(shap_vals, list) else shap_vals[0]
-        except Exception:
-            # Fallback: mock SHAP values from feature magnitudes
-            sv = tab_features[0] * 0.1
-
-        shap_dict = {FEATURE_NAMES[i]: float(sv[i]) for i in range(len(FEATURE_NAMES))}
-
-        # Top factors
-        sorted_feats = sorted(shap_dict.items(), key=lambda x: abs(x[1]), reverse=True)
-        top_factors = [FEATURE_LABELS.get(f, f) for f, _ in sorted_feats[:3]]
-
-        # NL explanation
-        explanation = generate_nl_explanation(shap_dict, classification.threat_level.value)
-
-        # Save plot
         plot_path = None
         try:
             import matplotlib
             matplotlib.use("Agg")
             import matplotlib.pyplot as plt
 
-            fig, ax = plt.subplots(figsize=(8, 4))
-            colors = ["#e63946" if v > 0 else "#457b9d" for v in sv]
-            ax.barh(FEATURE_NAMES, sv, color=colors)
-            ax.axvline(0, color="black", linewidth=0.8)
-            ax.set_title(
-                f"SHAP Feature Attribution — {classification.threat_level.value} "
-                f"(conf={classification.confidence:.2f})",
-                fontsize=11, fontweight="bold"
-            )
-            ax.set_xlabel("SHAP Value (impact on prediction)")
+            ordered = sorted(values.items(), key=lambda item: item[1])
+            labels = [FEATURE_LABELS[name] for name, _ in ordered]
+            impacts = [value for _, value in ordered]
+            colors = ["#ef4444" if value > 0 else "#38bdf8" for value in impacts]
+            fig, ax = plt.subplots(figsize=(9, 5))
+            ax.barh(labels, impacts, color=colors)
+            ax.axvline(0, color="#94a3b8", linewidth=0.8)
+            ax.set_title(f"Local attribution for {target_class}")
+            ax.set_xlabel("Change in target-class probability")
             plt.tight_layout()
-
-            plot_path = str(SHAP_OUTPUT_DIR / f"{telemetry.scenario_id}_shap.png")
-            plt.savefig(plot_path, dpi=120)
-            plt.close()
-        except Exception as plot_err:
-            logger.warning(f"[XAI] Plot generation failed: {plot_err}")
+            plot_path = str(
+                SHAP_OUTPUT_DIR / f"{telemetry.scenario_id}_attribution.png"
+            )
+            plt.savefig(plot_path, dpi=140, bbox_inches="tight")
+            plt.close(fig)
+        except Exception as plot_error:
+            logger.warning("[Explanation] Plot generation failed: %s", plot_error)
 
         state["xai"] = XAIResult(
-            shap_values=shap_dict,
+            attribution_values=values,
             top_factors=top_factors,
             explanation_text=explanation,
+            attribution_method=METHOD,
+            target_class=target_class,
             plot_path=plot_path,
         )
-        logger.info(f"[XAI] Explanation: {explanation}")
-
-    except Exception as e:
-        state["errors"].append(f"XAI error: {e}")
-        logger.error(f"[XAI] Error: {e}")
-
+        logger.info("[Explanation] %s", explanation)
+    except Exception as error:
+        state["errors"].append(f"Explanation unavailable: {error}")
+        logger.exception("[Explanation] Failed")
     return state

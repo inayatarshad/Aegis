@@ -2,8 +2,7 @@
 agents/escalation_agent.py — Threat routing and alert dispatching.
 """
 
-from core.state import AEGISState, EscalationLevel, ThreatLevel
-from core.config import ESCALATION_RULES
+from core.state import AEGISState, EscalationLevel
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -38,7 +37,7 @@ def _determine_escalation(clf, fusion, ctx) -> tuple[EscalationLevel, str]:
         reason = f"BENIGN class but elevated fused risk ({fused:.2f}) — monitoring"
     else:
         level = EscalationLevel.NONE
-        reason = f"BENIGN classification — no action required"
+        reason = "BENIGN classification — no action required"
 
     # Boost if in restricted zone
     if ctx and ctx.in_restricted_zone and level.value < EscalationLevel.REVIEW.value:
@@ -69,12 +68,16 @@ def escalation_agent(state: AEGISState) -> AEGISState:
     xai = state.get("xai")
     ret = state.get("retrieval")
     salute = state.get("salute_report")
+    review = state.get("review")
 
     level, reason = _determine_escalation(clf, fusion, ctx)
     state["escalation_level"] = level
     state["escalation_reason"] = reason
 
-    if level >= EscalationLevel.ALERT:
+    if review and review.status == "PENDING":
+        logger.warning("[Escalation] Recommendation held for human review — %s", reason)
+        state["alert_dispatched"] = False
+    elif level >= EscalationLevel.ALERT:
         logger.warning(f"[Escalation] ⚠️  ALERT — {reason}")
         state["alert_dispatched"] = True
     elif level >= EscalationLevel.REVIEW:
@@ -86,11 +89,15 @@ def escalation_agent(state: AEGISState) -> AEGISState:
     state["final_response"] = {
         "scenario_id": tel.scenario_id if tel else "unknown",
         "timestamp": tel.timestamp if tel else "",
+        "latitude": tel.latitude if tel else None,
+        "longitude": tel.longitude if tel else None,
         "threat_level": clf.threat_level.value if clf else "UNKNOWN",
         "confidence": clf.confidence if clf else 0.0,
         "class_probabilities": clf.class_probabilities if clf else {},
         "xai_summary": xai.explanation_text if xai else "",
         "top_xai_factors": xai.top_factors if xai else [],
+        "attribution_method": xai.attribution_method if xai else None,
+        "attribution_values": xai.attribution_values if xai else {},
         "shap_plot_path": xai.plot_path if xai else None,
         "doctrine_reference": ret.doctrine_reference if ret else "",
         "salute_report": {
@@ -105,6 +112,9 @@ def escalation_agent(state: AEGISState) -> AEGISState:
         "fused_risk_score": fusion.fused_risk_score if fusion else 0.0,
         "conflict_flags": fusion.conflict_flags if fusion else [],
         "human_review_required": fusion.human_review_required if fusion else False,
+        "review_status": review.status if review else "NOT_REQUIRED",
+        "review_reason": review.reason if review else "",
+        "review_required_by": review.required_by if review else [],
         "escalation_level": level.value,
         "escalation_level_name": level.name,
         "escalation_reason": reason,

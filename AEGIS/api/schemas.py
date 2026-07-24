@@ -2,13 +2,13 @@
 api/schemas.py — Pydantic models for request/response validation
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, List, Dict, Any
 
 
 class TelemetryInput(BaseModel):
-    scenario_id: str = Field(..., example="SC-2024-0001")
-    timestamp: str = Field(..., example="2024-11-14T14:32:11Z")
+    scenario_id: str
+    timestamp: str
     latitude: float = Field(..., ge=-90, le=90)
     longitude: float = Field(..., ge=-180, le=180)
     altitude_m: float = Field(..., ge=0, le=10000)
@@ -22,8 +22,8 @@ class TelemetryInput(BaseModel):
     rapid_altitude_change: bool
     mission_narrative: str = Field(..., min_length=5)
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "scenario_id": "SC-2024-0042",
                 "timestamp": "2024-11-14T14:32:11Z",
@@ -41,7 +41,7 @@ class TelemetryInput(BaseModel):
                 "mission_narrative": "Unknown drone penetrating restricted airspace with no IFF signal."
             }
         }
-
+    )
 
 class SALUTEReportSchema(BaseModel):
     size: str
@@ -55,11 +55,15 @@ class SALUTEReportSchema(BaseModel):
 class PipelineResponse(BaseModel):
     scenario_id: str
     timestamp: str
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
     threat_level: str
     confidence: float
     class_probabilities: Dict[str, float]
     xai_summary: str
     top_xai_factors: List[str]
+    attribution_method: Optional[str] = None
+    attribution_values: Dict[str, float] = Field(default_factory=dict)
     shap_plot_path: Optional[str]
     doctrine_reference: str
     salute_report: Dict[str, str]
@@ -67,6 +71,9 @@ class PipelineResponse(BaseModel):
     fused_risk_score: float
     conflict_flags: List[str]
     human_review_required: bool
+    review_status: str = "NOT_REQUIRED"
+    review_reason: str = ""
+    review_required_by: List[str] = Field(default_factory=list)
     escalation_level: int
     escalation_level_name: str
     escalation_reason: str
@@ -78,8 +85,11 @@ class PipelineResponse(BaseModel):
     agent_trace: List[str]
     errors: List[str]
     processing_latency_ms: Optional[float]
+    node_metrics: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+    pipeline_version: str = "unknown"
 
 
 class HealthResponse(BaseModel):
     status: str
     version: str
+    components: Dict[str, str] = Field(default_factory=dict)

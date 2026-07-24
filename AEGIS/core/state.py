@@ -4,7 +4,7 @@ All agents read from and write to this TypedDict.
 """
 
 from typing import TypedDict, Optional, List, Dict, Any
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 
 
@@ -52,10 +52,17 @@ class ClassificationResult:
 
 @dataclass
 class XAIResult:
-    shap_values: Dict[str, float]       # feature -> SHAP value
+    attribution_values: Dict[str, float]  # feature -> change in predicted probability
     top_factors: List[str]              # human-readable top 3 factors
     explanation_text: str               # NL explanation
-    plot_path: Optional[str] = None     # path to saved SHAP plot
+    attribution_method: str
+    target_class: str
+    plot_path: Optional[str] = None
+
+    @property
+    def shap_values(self) -> Dict[str, float]:
+        """Backward-compatible alias for older API consumers."""
+        return self.attribution_values
 
 
 @dataclass
@@ -95,6 +102,13 @@ class FusionResult:
     fused_risk_score: float             # 0.0 - 1.0
 
 
+@dataclass
+class ReviewDecision:
+    status: str                         # NOT_REQUIRED / PENDING / APPROVED / REJECTED
+    reason: str
+    required_by: List[str]
+
+
 class AEGISState(TypedDict):
     """Full pipeline state — mutated by each agent in the graph."""
 
@@ -108,6 +122,7 @@ class AEGISState(TypedDict):
     retrieval: Optional[RetrievalResult]
     context: Optional[ContextResult]
     fusion: Optional[FusionResult]
+    review: Optional[ReviewDecision]
     salute_report: Optional[SALUTEReport]
     report_text: Optional[str]
 
@@ -121,6 +136,8 @@ class AEGISState(TypedDict):
     errors: List[str]                   # any non-fatal errors logged
     processing_start_ms: Optional[float]
     processing_end_ms: Optional[float]
+    node_metrics: Dict[str, Dict[str, Any]]
+    pipeline_version: str
 
     # Final output
     final_response: Optional[Dict[str, Any]]
@@ -136,6 +153,7 @@ def initial_state(raw_telemetry: Dict[str, Any]) -> AEGISState:
         retrieval=None,
         context=None,
         fusion=None,
+        review=None,
         salute_report=None,
         report_text=None,
         escalation_level=EscalationLevel.NONE,
@@ -145,5 +163,7 @@ def initial_state(raw_telemetry: Dict[str, Any]) -> AEGISState:
         errors=[],
         processing_start_ms=None,
         processing_end_ms=None,
+        node_metrics={},
+        pipeline_version="aegis-2.0.0",
         final_response=None,
     )

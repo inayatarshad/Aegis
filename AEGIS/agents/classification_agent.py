@@ -11,15 +11,8 @@ In production, swap in a pre-trained model loaded from disk.
 """
 
 import numpy as np
-from sklearn.ensemble import GradientBoostingClassifier
-from sklearn.linear_model import LogisticRegression
-from sklearn.preprocessing import LabelEncoder
-from sentence_transformers import SentenceTransformer
 
 from core.state import AEGISState, ClassificationResult, ThreatLevel
-from core.config import (
-    HOSTILE_THRESHOLD, SUSPICIOUS_THRESHOLD, EMBEDDING_MODEL
-)
 from utils.logger import get_logger
 from models.threat_classifier import get_or_train_classifier
 
@@ -73,19 +66,13 @@ def classification_agent(state: AEGISState) -> AEGISState:
         classes = classifier.classes_                  # ['BENIGN', 'HOSTILE', 'SUSPICIOUS']
         class_probs = {c: float(p) for c, p in zip(classes, proba)}
 
-        # Determine threat level from probabilities
-        hostile_prob = class_probs.get("HOSTILE", 0.0)
-        suspicious_prob = class_probs.get("SUSPICIOUS", 0.0)
-
-        if hostile_prob >= HOSTILE_THRESHOLD:
-            threat_level = ThreatLevel.HOSTILE
-            confidence = hostile_prob
-        elif suspicious_prob >= SUSPICIOUS_THRESHOLD or hostile_prob >= 0.45:
-            threat_level = ThreatLevel.SUSPICIOUS
-            confidence = max(suspicious_prob, hostile_prob)
-        else:
-            threat_level = ThreatLevel.BENIGN
-            confidence = class_probs.get("BENIGN", 0.0)
+        # Use the calibrated argmax as the class decision. Uncertainty is routed
+        # through the graph's review gate instead of changing the class with a
+        # second set of hand-written thresholds.
+        predicted_class, confidence = max(
+            class_probs.items(), key=lambda item: item[1]
+        )
+        threat_level = ThreatLevel(predicted_class)
 
         state["classification"] = ClassificationResult(
             threat_level=threat_level,
