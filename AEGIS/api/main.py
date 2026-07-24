@@ -10,6 +10,7 @@ from api.schemas import TelemetryInput, PipelineResponse, HealthResponse
 from core.pipeline import run_pipeline
 from utils.logger import get_logger
 from core.config import VECTORSTORE_DIR, GROQ_API_KEY, BASE_DIR
+from models.threat_classifier import MODEL_PATH
 
 logger = get_logger(__name__)
 
@@ -36,7 +37,7 @@ app.add_middleware(
 @app.get("/health", response_model=HealthResponse, tags=["System"])
 def health():
     """Report readiness instead of returning an unconditional green status."""
-    model_ready = (BASE_DIR / "models" / "saved" / "threat_clf_v2.pkl").exists()
+    model_ready = MODEL_PATH.exists()
     vectorstore_ready = VECTORSTORE_DIR.exists() and any(VECTORSTORE_DIR.iterdir())
     components = {
         "classifier": "ready" if model_ready else "cold_start",

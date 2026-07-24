@@ -27,7 +27,24 @@ def get_chroma_collection():
             path=str(VECTORSTORE_DIR),
             settings=Settings(anonymized_telemetry=False)
         )
-    return _chroma_client.get_or_create_collection(CHROMA_COLLECTION)
+    collection = _chroma_client.get_or_create_collection(CHROMA_COLLECTION)
+    if collection.count() == 0:
+        from data.simulated.generate_telemetry import DOCTRINE_DOCS
+
+        texts = [document["text"] for document in DOCTRINE_DOCS]
+        embeddings = get_embedder().encode(
+            texts, normalize_embeddings=True
+        ).tolist()
+        collection.add(
+            ids=[document["id"] for document in DOCTRINE_DOCS],
+            embeddings=embeddings,
+            documents=texts,
+            metadatas=[
+                {"source": document["source"]} for document in DOCTRINE_DOCS
+            ],
+        )
+        logger.info("[Retrieval] Initialized ephemeral doctrine collection")
+    return collection
 
 
 def get_embedder():

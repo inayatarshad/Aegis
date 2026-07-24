@@ -8,15 +8,16 @@ from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 WORKSPACE_DIR = BASE_DIR.parent
+RUNTIME_DIR = Path("/tmp/aegis") if os.getenv("VERCEL") else BASE_DIR
 
 load_dotenv(BASE_DIR / ".env")
 load_dotenv(WORKSPACE_DIR / ".env", override=True)
 
 # ── Paths ──────────────────────────────────────────────────────────────────
-DATA_DIR = BASE_DIR / "data"
+DATA_DIR = RUNTIME_DIR / "data"
 VECTORSTORE_DIR = DATA_DIR / "vectorstore"
-DOCTRINE_DIR = DATA_DIR / "simulated" / "doctrine_docs"
-OUTPUTS_DIR = BASE_DIR / "outputs"
+DOCTRINE_DIR = BASE_DIR / "data" / "simulated" / "doctrine_docs"
+OUTPUTS_DIR = RUNTIME_DIR / "outputs"
 SHAP_OUTPUT_DIR = OUTPUTS_DIR / "shap"
 
 for d in [VECTORSTORE_DIR, OUTPUTS_DIR, SHAP_OUTPUT_DIR]:
