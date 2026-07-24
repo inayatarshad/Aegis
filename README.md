@@ -152,24 +152,6 @@ Tests cover individual agents, graph routing, observability, deterministic
 fallback behavior, review safety, health readiness, and API validation. GitHub
 Actions runs generation, linting, and tests on every push and pull request.
 
-## API example
-
-Local development:
-
-```bash
-curl -X POST http://localhost:8000/analyze \
-  -H "Content-Type: application/json" \
-  --data @data/simulated/example_request.json
-```
-
-Production:
-
-```bash
-curl -X POST https://aegis-agentic-isr.vercel.app/api/analyze \
-  -H "Content-Type: application/json" \
-  --data @data/simulated/example_request.json
-```
-
 The response contains the classification, probability attribution, retrieved
 policy reference, context and fusion scores, review status, recommendation,
 node timings, pipeline version, and any degraded-component errors.
