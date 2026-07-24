@@ -1,9 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "python build_vercel.py",
   "functions": {
     "api/index.py": {
       "maxDuration": 300,
-      "excludeFiles": "{dashboard/**,tests/**,evaluation/**,outputs/**,models/saved/**,data/vectorstore/**}"
+      "excludeFiles": "{dashboard/**,tests/**,evaluation/**,outputs/**,data/vectorstore/**}"
     }
   },
   "rewrites": [

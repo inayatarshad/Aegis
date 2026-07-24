@@ -2,7 +2,7 @@
 
 from fastapi.testclient import TestClient
 
-from api.main import app
+from service.main import app
 
 client = TestClient(app)
 
@@ -36,4 +36,3 @@ def test_invalid_coordinates_are_rejected():
         },
     )
     assert response.status_code == 422
-

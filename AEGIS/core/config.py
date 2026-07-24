@@ -8,7 +8,11 @@ from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 WORKSPACE_DIR = BASE_DIR.parent
-RUNTIME_DIR = Path("/tmp/aegis") if os.getenv("VERCEL") else BASE_DIR
+RUNTIME_DIR = (
+    Path("/tmp/aegis")
+    if os.getenv("VERCEL") and not os.getenv("AEGIS_BUILD")
+    else BASE_DIR
+)
 
 load_dotenv(BASE_DIR / ".env")
 load_dotenv(WORKSPACE_DIR / ".env", override=True)
@@ -32,7 +36,13 @@ LLM_TEMPERATURE = 0.1                       # low for deterministic reports
 LLM_MAX_TOKENS = 1024
 
 # ── Embedding Config ──────────────────────────────────────────────────────
-EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+BUNDLED_EMBEDDING_DIR = BASE_DIR / "models" / "embedding"
+EMBEDDING_MODEL = (
+    str(BUNDLED_EMBEDDING_DIR)
+    if BUNDLED_EMBEDDING_DIR.exists()
+    else EMBEDDING_MODEL_NAME
+)
 
 # ── ChromaDB ──────────────────────────────────────────────────────────────
 CHROMA_COLLECTION = "aegis_doctrine"

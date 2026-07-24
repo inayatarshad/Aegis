@@ -16,7 +16,7 @@ services:
       - ./models/saved:/app/models/saved
     command: >
       sh -c "python data/simulated/generate_telemetry.py &&
-             uvicorn api.main:app --host 0.0.0.0 --port 8000"
+             uvicorn service.main:app --host 0.0.0.0 --port 8000"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s

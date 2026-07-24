@@ -12,12 +12,17 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
 from sentence_transformers import SentenceTransformer
 
-from core.config import EMBEDDING_MODEL, RUNTIME_DIR
+from core.config import BASE_DIR, EMBEDDING_MODEL, RUNTIME_DIR
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-MODEL_PATH = RUNTIME_DIR / "models" / "saved" / "threat_clf_v2.pkl"
+BUNDLED_MODEL_PATH = BASE_DIR / "models" / "saved" / "threat_clf_v2.pkl"
+MODEL_PATH = (
+    BUNDLED_MODEL_PATH
+    if BUNDLED_MODEL_PATH.exists()
+    else RUNTIME_DIR / "models" / "saved" / "threat_clf_v2.pkl"
+)
 MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 _cached_classifier = None

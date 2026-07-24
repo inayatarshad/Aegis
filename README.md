@@ -69,7 +69,7 @@ python -m venv .venv
 # macOS/Linux: source .venv/bin/activate
 pip install -r requirements-dev.txt
 python data/simulated/generate_telemetry.py
-uvicorn api.main:app --reload
+uvicorn service.main:app --reload
 ```
 
 In another terminal:

@@ -1,5 +1,5 @@
 """
-api/main.py — FastAPI REST backend for AEGIS
+service/main.py — FastAPI REST backend for AEGIS
 """
 
 from fastapi import FastAPI, HTTPException

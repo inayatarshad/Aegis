@@ -11,7 +11,7 @@ os.environ.setdefault("MPLCONFIGDIR", "/tmp/aegis/matplotlib")
 
 from fastapi import FastAPI  # noqa: E402
 
-from api.main import app as core_app  # noqa: E402
+from service.main import app as core_app  # noqa: E402
 
 app = FastAPI(title="AEGIS Vercel Gateway")
 
